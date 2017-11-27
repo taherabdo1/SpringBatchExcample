@@ -5,13 +5,16 @@ import javax.sql.DataSource;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -21,7 +24,7 @@ import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import com.wallethub.boot.entities.LogRecord;
 
 @Configuration
-public class JobConfiguration {
+public class ReadFileJobConfiguration {
 
     @Autowired
     private DataSource datasource;
@@ -33,19 +36,22 @@ public class JobConfiguration {
     private StepBuilderFactory stepBuilderFactory;
     
     @Autowired
-    private FlatFileItemReader<LogRecord> logReader;
-    
-    @Autowired
     private JdbcBatchItemWriter<LogRecord> LogRecordItemWriter;
 
+    @Autowired
+    Step readFileStep1;
+    
+    @Autowired
+    FlatFileItemReader<LogRecord> logReader;
 
     @Bean
-    public Job migrationJob() throws Exception {
-        return jobBuilderFactory.get("migrationJob").start(step1()).build();
+    public Job readFileJob() throws Exception {
+        return jobBuilderFactory.get("migrationJob").start(readFileStep1).build();
     }
 
     @Bean
-    public FlatFileItemReader<LogRecord> logReader() {
+    @StepScope
+    public FlatFileItemReader<LogRecord> logReader(@Value("#{jobParameters['fileName']}")final String fileName) {
         final DelimitedLineTokenizer delimitedLineTokenizer = new DelimitedLineTokenizer();
         delimitedLineTokenizer.setNames(new String[] { "DATE", "IP","REQUEST", "STATUS", "AGENT"});
         delimitedLineTokenizer.setDelimiter("|");
@@ -56,7 +62,7 @@ public class JobConfiguration {
         defaultLineMapper.afterPropertiesSet();
 
         final FlatFileItemReader<LogRecord> reader = new FlatFileItemReader<>();
-        reader.setResource(new ClassPathResource("/access.log"));
+        reader.setResource(new FileSystemResource(fileName));
         reader.setLineMapper(defaultLineMapper);
         return reader;
     }
@@ -72,12 +78,13 @@ public class JobConfiguration {
     }
     
     @Bean
-    public Step step1() throws Exception {
+    @JobScope
+    public Step readFileStep1(@Value("#{jobParameters['fileName']}")final String fileName) throws Exception {
         final SimpleAsyncTaskExecutor taskExecutor = new SimpleAsyncTaskExecutor();
         taskExecutor.setConcurrencyLimit(50);
 
         return stepBuilderFactory//
-                .get("loadData").<LogRecord, LogRecord> chunk(20)//
+                .get("readFileStep1").<LogRecord, LogRecord> chunk(20)//
                 .reader(logReader)//
                 .writer(LogRecordItemWriter)//
                 .taskExecutor(taskExecutor)//
