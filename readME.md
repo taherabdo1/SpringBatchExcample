@@ -9,3 +9,4 @@ Desktop Application to read a log file and load it in database, then use the dat
 	- spring data jpa
 	- mysql
 	- Maven
+	- apache CLI
